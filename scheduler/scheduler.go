@@ -4,7 +4,7 @@ package scheduler
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/parmesh-04/golinkcheck-monitor/checker"
@@ -39,7 +39,7 @@ func NewScheduler(db *gorm.DB, cfg config.Config) *Scheduler {
 // Start loads all active monitors from the database and schedules them.
 
 func (s *Scheduler) Start() {
-	log.Println("Scheduler starting...")
+	slog.Info("Scheduler starting...")
 
 	// 1. Load active monitors from the database.
 	var monitors []database.Monitor
@@ -54,16 +54,16 @@ func (s *Scheduler) Start() {
 
 	// 3. Start the cron runner in the background.
 	s.cronRunner.Start()
-	log.Printf("Scheduler started with %d active jobs.", len(s.activeJobs))
+	slog.Info("Scheduler started", "active_jobs", len(s.activeJobs))
 }
 
 // Stop shuts down the cron runner.
 func (s *Scheduler) Stop() {
-	log.Println("Scheduler stopping...")
+	slog.Info("Scheduler stopping...")
 	// The Stop method waits for any running jobs to complete.
 	ctx := s.cronRunner.Stop()
 	<-ctx.Done() // Wait until the stop is complete.
-	log.Println("Scheduler stopped.")
+	slog.Info("Scheduler stopped")
 }
 
 // AddMonitorJob adds a new monitoring job to the scheduler.
@@ -79,7 +79,7 @@ func (s *Scheduler) AddMonitorJob(monitor database.Monitor) {
 	// Add the job to the cron runner.
 	// AddFunc takes a schedule string and a function to run.
 	entryID, err := s.cronRunner.AddFunc(schedule, func() {
-		log.Printf("-> Running check for monitor #%d: %s", m.ID, m.URL)
+		slog.Info("-> Running check", "monitor_id", m.ID, "url", m.URL)
 
 		// 1. Perform the check using the checker package we built.
 		timeout := time.Duration(s.config.MonitorCheckTimeoutSec) * time.Second
@@ -90,20 +90,31 @@ func (s *Scheduler) AddMonitorJob(monitor database.Monitor) {
 
 		// 3. Save the result to the database.
 		if dbErr := s.db.Create(&checkResult).Error; dbErr != nil {
-			log.Printf("Error saving check result for monitor #%d: %v", m.ID, dbErr)
+			slog.Error("Error saving check result", "monitor_id", m.ID, "error", dbErr)
 		} else {
-			log.Printf("<- Check for monitor #%d successful. Status: %d, Time: %dms", m.ID, checkResult.StatusCode, checkResult.DurationMs)
+			slog.Info(
+				"<- Check successful",
+				"monitor_id", m.ID,
+				"status_code", checkResult.StatusCode,
+				"duration_ms", checkResult.DurationMs,
+			)
 		}
 	})
 
 	if err != nil {
-		log.Printf("Error adding monitor #%d to scheduler: %v", m.ID, err)
+		slog.Error("Error adding monitor to scheduler", "monitor_id", m.ID, "error", err)
 		return
 	}
 
 	// Store the job's ID so we can manage it later (e.g., stop or remove it).
 	s.activeJobs[m.ID] = entryID
-	log.Printf("Scheduled monitor #%d (%s) to run every %d seconds. Job ID: %d", m.ID, m.URL, m.IntervalSec, entryID)
+	slog.Info(
+		"Scheduled new monitor",
+		"monitor_id", m.ID,
+		"url", m.URL,
+		"interval_sec", m.IntervalSec,
+		"job_id", entryID,
+	)
 }
 
 
@@ -112,7 +123,7 @@ func (s *Scheduler) RemoveMonitorJob(monitorID uint) {
 	entryID, found := s.activeJobs[monitorID]
 	if !found {
 		// If it's not in our map, it's not a running job. Nothing to do.
-		log.Printf("Warning: Could not find job for monitor #%d to remove. It may have already been stopped.", monitorID)
+		slog.Warn("Could not find job to remove", "monitor_id", monitorID)
 		return
 	}
 
@@ -122,5 +133,5 @@ func (s *Scheduler) RemoveMonitorJob(monitorID uint) {
 	// 3. IMPORTANT: Remove the entry from our tracking map to keep our state consistent.
 	delete(s.activeJobs, monitorID)
 
-	log.Printf("Removed job for monitor #%d from the scheduler.", monitorID)
+	slog.Info("Removed job from scheduler", "monitor_id", monitorID, "job_id", entryID)
 }

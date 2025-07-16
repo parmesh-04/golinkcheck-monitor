@@ -1,4 +1,3 @@
-// checker/checker.go
 
 package checker
 

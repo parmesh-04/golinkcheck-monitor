@@ -1,65 +1,67 @@
-// main.go
+
 
 package main
 
 import (
-	"log"
+	"log/slog" 
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/parmesh-04/golinkcheck-monitor/api"       // Import the API package
+	"github.com/parmesh-04/golinkcheck-monitor/api"
 	"github.com/parmesh-04/golinkcheck-monitor/config"
 	"github.com/parmesh-04/golinkcheck-monitor/database"
+	"github.com/parmesh-04/golinkcheck-monitor/logging" 
 	"github.com/parmesh-04/golinkcheck-monitor/scheduler"
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Println("GoLinkCheck Monitor starting up...")
+	
+	logging.InitLogger() 
+
+	slog.Info("GoLinkCheck Monitor starting up...") 
 
 	// 1. Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Fatal error loading configuration: %v", err)
+		// Use slog for fatal errors too.
+		slog.Error("Fatal error loading configuration", "error", err)
+		os.Exit(1) // Exit the program
 	}
 
 	// 2. Initialize database
 	db, err := database.InitDB(cfg)
 	if err != nil {
-		log.Fatalf("Fatal error initializing database: %v", err)
+		slog.Error("Fatal error initializing database", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Database initialized successfully.")
+	slog.Info("Database initialized successfully.")
+
 
 	// 3. Create the scheduler
 	sched := scheduler.NewScheduler(db, cfg)
 
-	// 4. Create the API Server, giving it the db and scheduler it needs
+	// 4. Create the API Server
 	apiServer := api.NewServer(cfg, db, sched)
 
-	// 5. Start the scheduler in the background
+	// 5. Start the scheduler
 	sched.Start()
 
-	// 6. Start the API server in a separate, non-blocking goroutine
+	// 6. Start the API server
 	go func() {
-		log.Println("Starting API server...")
 		if err := apiServer.Start(); err != nil {
-			log.Fatalf("Fatal error: API server failed to start: %v", err)
+			slog.Error("Fatal error starting API server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
-	log.Println("Application startup sequence complete. Services are running.")
-	log.Println("Press Ctrl+C to exit.")
+	slog.Info("Application startup sequence complete. Services are running.")
 
-	// 7. Wait for a shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutdown signal received. Shutting down gracefully...")
-
-	// Stop the scheduler, allowing running jobs to complete.
+	slog.Info("Shutdown signal received. Shutting down gracefully...")
 	sched.Stop()
-
-	log.Println("Application has been shut down. Goodbye!")
+	slog.Info("Application has been shut down. Goodbye!")
 }

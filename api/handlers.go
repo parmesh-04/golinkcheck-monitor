@@ -1,10 +1,9 @@
-// api/handlers.go
 
 package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -37,7 +36,7 @@ func (s *Server) handleCreateMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.scheduler.AddMonitorJob(newMonitor)
-	log.Printf("New monitor for URL [%s] created via API and added to scheduler.", newMonitor.URL)
+	slog.Info("New monitor created via API", "monitor_id", newMonitor.ID, "url", newMonitor.URL)
 	respondWithJSON(w, http.StatusCreated, newMonitor)
 }
 
@@ -80,10 +79,14 @@ func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.RowsAffected == 0 {
-		log.Printf("Attempted to delete monitor #%d, but it was not found in the database.", id)
+		slog.Warn("Attempted to delete monitor, but it was not found", "monitor_id", id)
+	} else {
+		slog.Info("Deleted monitor", "monitor_id", id)
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
+	}
+	
+
 
 func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -117,9 +120,9 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	s.scheduler.RemoveMonitorJob(existingMonitor.ID)
 	if existingMonitor.Active {
 		s.scheduler.AddMonitorJob(existingMonitor)
-		log.Printf("Updated and reactivated job for monitor #%d", existingMonitor.ID)
+		slog.Info("Updated and reactivated job", "monitor_id", existingMonitor.ID)
 	} else {
-		log.Printf("Deactivated job for monitor #%d", existingMonitor.ID)
+		slog.Info("Deactivated job via update", "monitor_id", existingMonitor.ID)
 	}
 	respondWithJSON(w, http.StatusOK, existingMonitor)
 }
