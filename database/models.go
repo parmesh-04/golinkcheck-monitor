@@ -46,7 +46,7 @@ type CheckResult struct {
 	ErrorMessage string `gorm:"type:text"`
 
 	// DurationMs is how long the check took, in milliseconds.
-	DurationMs int
+	DurationMs int64
 
 	// CheckedAt is the timestamp when this check was performed.
 	CheckedAt time.Time `gorm:"not null"`

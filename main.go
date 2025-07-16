@@ -1,35 +1,50 @@
+// main.go
 
 package main
 
 import (
-	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/parmesh-04/golinkcheck-monitor/config"
-	"github.com/parmesh-04/golinkcheck-monitor/database" // Import our database package
+	"github.com/parmesh-04/golinkcheck-monitor/database"
+	"github.com/parmesh-04/golinkcheck-monitor/scheduler"
 )
 
 func main() {
-	fmt.Println("GoLinkCheck Monitor starting up...")
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.Println("GoLinkCheck Monitor starting up...")
 
 	// 1. Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Error loading configuration: %v", err)
+		log.Fatalf("Fatal error loading configuration: %v", err)
 	}
 
 	// 2. Initialize database
-	_, err = database.InitDB(cfg)
+	db, err := database.InitDB(cfg)
 	if err != nil {
-		log.Fatalf("Error initializing database: %v", err)
+		log.Fatalf("Fatal error initializing database: %v", err)
 	}
-
-	
 	log.Println("Database initialized successfully.")
 
 	
-	fmt.Printf("Server will run on port: %s\n", cfg.ServerPort)
-	fmt.Printf("Database will use URL: %s\n", cfg.DatabaseURL)
 
-	fmt.Println("Application startup sequence complete!")
+	// 3. Create and start the scheduler
+	sched := scheduler.NewScheduler(db, cfg)
+	sched.Start()
+
+	log.Println("Application startup sequence complete. Monitoring is active.")
+	log.Println("Press Ctrl+C to exit.")
+
+	// 4. Implement graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutdown signal received. Shutting down gracefully...")
+	sched.Stop()
+	log.Println("Application has been shut down. Goodbye!")
 }
