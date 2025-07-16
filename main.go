@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/parmesh-04/golinkcheck-monitor/api"       // Import the API package
 	"github.com/parmesh-04/golinkcheck-monitor/config"
 	"github.com/parmesh-04/golinkcheck-monitor/database"
 	"github.com/parmesh-04/golinkcheck-monitor/scheduler"
@@ -30,21 +31,35 @@ func main() {
 	}
 	log.Println("Database initialized successfully.")
 
-	
-
-	// 3. Create and start the scheduler
+	// 3. Create the scheduler
 	sched := scheduler.NewScheduler(db, cfg)
+
+	// 4. Create the API Server, giving it the db and scheduler it needs
+	apiServer := api.NewServer(cfg, db, sched)
+
+	// 5. Start the scheduler in the background
 	sched.Start()
 
-	log.Println("Application startup sequence complete. Monitoring is active.")
+	// 6. Start the API server in a separate, non-blocking goroutine
+	go func() {
+		log.Println("Starting API server...")
+		if err := apiServer.Start(); err != nil {
+			log.Fatalf("Fatal error: API server failed to start: %v", err)
+		}
+	}()
+
+	log.Println("Application startup sequence complete. Services are running.")
 	log.Println("Press Ctrl+C to exit.")
 
-	// 4. Implement graceful shutdown
+	// 7. Wait for a shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Println("Shutdown signal received. Shutting down gracefully...")
+
+	// Stop the scheduler, allowing running jobs to complete.
 	sched.Stop()
+
 	log.Println("Application has been shut down. Goodbye!")
 }

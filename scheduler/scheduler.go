@@ -105,3 +105,22 @@ func (s *Scheduler) AddMonitorJob(monitor database.Monitor) {
 	s.activeJobs[m.ID] = entryID
 	log.Printf("Scheduled monitor #%d (%s) to run every %d seconds. Job ID: %d", m.ID, m.URL, m.IntervalSec, entryID)
 }
+
+
+func (s *Scheduler) RemoveMonitorJob(monitorID uint) {
+	// 1. Look up the job's internal cron ID from our map.
+	entryID, found := s.activeJobs[monitorID]
+	if !found {
+		// If it's not in our map, it's not a running job. Nothing to do.
+		log.Printf("Warning: Could not find job for monitor #%d to remove. It may have already been stopped.", monitorID)
+		return
+	}
+
+	// 2. Tell the cron runner to remove the job with that ID.
+	s.cronRunner.Remove(entryID)
+
+	// 3. IMPORTANT: Remove the entry from our tracking map to keep our state consistent.
+	delete(s.activeJobs, monitorID)
+
+	log.Printf("Removed job for monitor #%d from the scheduler.", monitorID)
+}
