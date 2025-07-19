@@ -1,0 +1,29 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  # This defines our PostgreSQL database service
+  db:
+    # We use the official postgres image, version 15, with a lightweight Alpine base.
+    image: postgres:15-alpine
+    # This ensures the database will restart automatically if it crashes.
+    restart: always
+    # These are the environment variables to configure the postgres container.
+    # IMPORTANT: These are for local development ONLY.
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=golinkcheck
+    # This maps the port inside the container (5432) to the port on your
+    # local machine (5432), so our Go app can connect to it.
+    ports:
+      - "5432:5432"
+    # This is crucial for data persistence. It tells Docker to store the
+    # database data in a named volume, so it's not lost when the container stops.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# This defines the named volume we referenced above.
+volumes:
+  postgres_data:

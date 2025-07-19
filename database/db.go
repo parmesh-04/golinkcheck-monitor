@@ -1,12 +1,12 @@
-// database/db.go
 
 package database
 
 import (
 	"fmt"
-	"log/slog" 
+	"log/slog"
 	"strings"
 
+	"gorm.io/driver/postgres" 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -15,36 +15,43 @@ import (
 
 // InitDB initializes the database connection and runs migrations.
 func InitDB(cfg config.Config) (*gorm.DB, error) {
-	slog.Info("Initializing database connection...") // <-- CHANGED
+	slog.Info("Initializing database connection...")
 
 	var db *gorm.DB
 	var err error
+	dbURL := cfg.DatabaseURL
 
-	if strings.HasPrefix(cfg.DatabaseURL, "sqlite:") {
-		dbPath := strings.TrimPrefix(cfg.DatabaseURL, "sqlite:")
-		// Add more context to the log!
-		slog.Info("Connecting to SQLite database", "path", dbPath) // <-- CHANGED
+	if strings.HasPrefix(dbURL, "sqlite:") {
+		
+		dbPath := strings.TrimPrefix(dbURL, "sqlite:")
+		slog.Info("Connecting to SQLite database", "path", dbPath)
 		db, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+
+	} else if strings.HasPrefix(dbURL, "postgres:") || strings.HasPrefix(dbURL, "postgresql:") {
+		
+		slog.Info("Connecting to PostgreSQL database...")
+		// The postgres driver can use the full URL (DSN) directly.
+		db, err = gorm.Open(postgres.Open(dbURL), &gorm.Config{})
+		
+
 	} else {
-		return nil, fmt.Errorf("unsupported database type. only 'sqlite:' is supported for now")
+		return nil, fmt.Errorf("unsupported database type. only 'sqlite' and 'postgres' are supported")
 	}
 
 	if err != nil {
-		// Add structured error logging
-		slog.Error("Failed to connect to database", "error", err) // <-- CHANGED
+		slog.Error("Failed to connect to database", "error", err)
 		return nil, err
 	}
 
-	slog.Info("Database connection established.") // <-- CHANGED
+	slog.Info("Database connection established.")
 
-	slog.Info("Running database migrations...") // <-- CHANGED
-	// We are migrating the Monitor and CheckResult models
+	slog.Info("Running database migrations...")
 	err = db.AutoMigrate(&Monitor{}, &CheckResult{})
 	if err != nil {
-		slog.Error("Failed to run database migrations", "error", err) // <-- CHANGED
+		slog.Error("Failed to run database migrations", "error", err)
 		return nil, err
 	}
 
-	slog.Info("Database migrations completed successfully.") // <-- CHANGED
+	slog.Info("Database migrations completed successfully.")
 	return db, nil
 }

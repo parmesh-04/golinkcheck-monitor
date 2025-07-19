@@ -1,4 +1,4 @@
-
+// api/server.go
 
 package api
 
@@ -9,8 +9,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/parmesh-04/golinkcheck-monitor/config"
 	"github.com/parmesh-04/golinkcheck-monitor/scheduler"
+	"github.com/prometheus/client_golang/prometheus/promhttp" // Import the Prometheus HTTP handler
 	"gorm.io/gorm"
-	
 )
 
 // Server holds all the dependencies our API needs to function.
@@ -35,15 +35,19 @@ func NewServer(cfg config.Config, db *gorm.DB, sched *scheduler.Scheduler) *Serv
 func (s *Server) Start() error {
 	router := mux.NewRouter()
 
-	
-	// Create a subrouter for all routes that need authentication.
-	// We are saying "all routes starting with /monitors will use this subrouter".
+	// --- THIS IS THE NEW LINE ---
+	// Expose the /metrics endpoint for Prometheus scraping.
+	// This is attached to the main router because it should NOT be authenticated.
+	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
+	// --- END OF NEW LINE ---
+
+	// Create a subrouter for all API routes that need authentication.
 	apiRouter := router.PathPrefix("/monitors").Subrouter()
 
 	// Apply our authMiddleware to every single request that goes to this subrouter.
 	apiRouter.Use(s.authMiddleware)
 
-	// Now, attach your handlers to the SECURED apiRouter, not the main router.
+	// Attach your handlers to the SECURED apiRouter.
 	apiRouter.HandleFunc("", s.handleListMonitors).Methods("GET")
 	apiRouter.HandleFunc("", s.handleCreateMonitor).Methods("POST")
 	apiRouter.HandleFunc("/{id}", s.handleGetMonitor).Methods("GET")

@@ -1,17 +1,19 @@
+// api/handlers.go
 
 package api
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
 
-	"github.com/gorilla/mux" 
+	"github.com/gorilla/mux"
 	"github.com/parmesh-04/golinkcheck-monitor/database"
 	"gorm.io/gorm"
 )
 
+// handleListMonitors retrieves all monitors from the database.
+// No changes were needed here as it doesn't process an input body.
 func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 	var monitors []database.Monitor
 	if err := s.db.Find(&monitors).Error; err != nil {
@@ -21,25 +23,8 @@ func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, monitors)
 }
 
-func (s *Server) handleCreateMonitor(w http.ResponseWriter, r *http.Request) {
-	var newMonitor database.Monitor
-	if err := json.NewDecoder(r.Body).Decode(&newMonitor); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
-		return
-	}
-	if newMonitor.URL == "" || newMonitor.IntervalSec <= 0 {
-		respondWithError(w, http.StatusBadRequest, "URL and a positive IntervalSec are required")
-		return
-	}
-	if err := s.db.Create(&newMonitor).Error; err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Could not create monitor in database")
-		return
-	}
-	s.scheduler.AddMonitorJob(newMonitor)
-	slog.Info("New monitor created via API", "monitor_id", newMonitor.ID, "url", newMonitor.URL)
-	respondWithJSON(w, http.StatusCreated, newMonitor)
-}
-
+// handleGetMonitor retrieves a single monitor by its ID.
+// No changes were needed here as it doesn't process an input body.
 func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr, ok := vars["id"]
@@ -64,30 +49,38 @@ func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, monitor)
 }
 
-func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	idStr := vars["id"]
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid Monitor ID")
+// handleCreateMonitor validates and creates a new monitor.
+// This handler is now cleaner and uses the validation helper.
+func (s *Server) handleCreateMonitor(w http.ResponseWriter, r *http.Request) {
+	var req CreateMonitorRequest // Use our new API-specific request struct
+
+	// Use the helper to decode the JSON body and run validation in one step.
+	if err := parseAndValidate(r, &req); err != nil {
+		slog.Error("Validation failed for create monitor request", "error", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
 		return
 	}
-	s.scheduler.RemoveMonitorJob(uint(id))
-	result := s.db.Unscoped().Delete(&database.Monitor{}, id)
-	if result.Error != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to delete monitor from database")
+
+	// Map the validated request data to our database model.
+	newMonitor := database.Monitor{
+		URL:         req.URL,
+		IntervalSec: req.IntervalSec,
+		Active:      true, // New monitors are active by default.
+	}
+
+	if err := s.db.Create(&newMonitor).Error; err != nil {
+		slog.Error("Failed to create monitor in db", "error", err)
+		respondWithError(w, http.StatusConflict, "Could not create monitor (perhaps URL already exists?)")
 		return
 	}
-	if result.RowsAffected == 0 {
-		slog.Warn("Attempted to delete monitor, but it was not found", "monitor_id", id)
-	} else {
-		slog.Info("Deleted monitor", "monitor_id", id)
-	}
-	w.WriteHeader(http.StatusNoContent)
-	}
-	
 
+	s.scheduler.AddMonitorJob(newMonitor)
+	slog.Info("New monitor created via API", "monitor_id", newMonitor.ID, "url", newMonitor.URL)
+	respondWithJSON(w, http.StatusCreated, newMonitor)
+}
 
+// handleUpdateMonitor validates and updates an existing monitor.
+// This handler is now much cleaner and safer.
 func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
@@ -96,6 +89,8 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Invalid Monitor ID")
 		return
 	}
+
+	// First, fetch the monitor we want to update.
 	var existingMonitor database.Monitor
 	if err := s.db.First(&existingMonitor, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -105,18 +100,26 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	var updateData database.Monitor
-	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+
+	// Use the helper to decode and validate the incoming update data.
+	var req UpdateMonitorRequest
+	if err := parseAndValidate(r, &req); err != nil {
+		slog.Error("Validation failed for update monitor request", "monitor_id", id, "error", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
 		return
 	}
-	existingMonitor.URL = updateData.URL
-	existingMonitor.IntervalSec = updateData.IntervalSec
-	existingMonitor.Active = updateData.Active
+
+	// Apply the validated changes to the existing monitor model.
+	existingMonitor.URL = req.URL
+	existingMonitor.IntervalSec = req.IntervalSec
+	existingMonitor.Active = req.Active
+
 	if err := s.db.Save(&existingMonitor).Error; err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to save updated monitor")
 		return
 	}
+
+	// Resynchronize the scheduler with the new state.
 	s.scheduler.RemoveMonitorJob(existingMonitor.ID)
 	if existingMonitor.Active {
 		s.scheduler.AddMonitorJob(existingMonitor)
@@ -124,5 +127,36 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	} else {
 		slog.Info("Deactivated job via update", "monitor_id", existingMonitor.ID)
 	}
+
 	respondWithJSON(w, http.StatusOK, existingMonitor)
+}
+
+// handleDeleteMonitor deletes a monitor by its ID.
+// No changes were needed here as it doesn't process an input body.
+func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Monitor ID")
+		return
+	}
+
+	// We must remove the job from the scheduler first.
+	s.scheduler.RemoveMonitorJob(uint(id))
+
+	// Use Unscoped() to perform a hard delete, even if using soft deletes elsewhere.
+	result := s.db.Unscoped().Delete(&database.Monitor{}, id)
+	if result.Error != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete monitor from database")
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		slog.Warn("Attempted to delete monitor, but it was not found", "monitor_id", id)
+	} else {
+		slog.Info("Deleted monitor", "monitor_id", id)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
