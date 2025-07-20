@@ -1,4 +1,3 @@
-// metrics/metrics.go
 
 package metrics
 

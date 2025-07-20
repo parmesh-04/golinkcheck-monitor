@@ -1,5 +1,3 @@
-// api/handlers.go
-
 package api
 
 import (
@@ -12,8 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// handleListMonitors retrieves all monitors from the database.
-// No changes were needed here as it doesn't process an input body.
+//crud handlers for monitors
+
+
+//return a list of all monitors
 func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 	var monitors []database.Monitor
 	if err := s.db.Find(&monitors).Error; err != nil {
@@ -23,8 +23,7 @@ func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, monitors)
 }
 
-// handleGetMonitor retrieves a single monitor by its ID.
-// No changes were needed here as it doesn't process an input body.
+//fetches a single monitor by ID
 func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr, ok := vars["id"]
@@ -32,11 +31,15 @@ func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Monitor ID is missing")
 		return
 	}
+
+	//checks if the id is a valid integer 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid Monitor ID")
 		return
 	}
+
+	//finds the monitor in the database and then return it or returns an error if not found
 	var monitor database.Monitor
 	if err := s.db.First(&monitor, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -49,25 +52,24 @@ func (s *Server) handleGetMonitor(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, monitor)
 }
 
-// handleCreateMonitor validates and creates a new monitor.
-// This handler is now cleaner and uses the validation helper.
+//creates a new monitor
+//expects a JSON payload with URL and IntervalSec
 func (s *Server) handleCreateMonitor(w http.ResponseWriter, r *http.Request) {
-	var req CreateMonitorRequest // Use our new API-specific request struct
+	var req CreateMonitorRequest
 
-	// Use the helper to decode the JSON body and run validation in one step.
 	if err := parseAndValidate(r, &req); err != nil {
 		slog.Error("Validation failed for create monitor request", "error", err)
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
 		return
 	}
-
-	// Map the validated request data to our database model.
+	//add the new monitor to the database
 	newMonitor := database.Monitor{
 		URL:         req.URL,
 		IntervalSec: req.IntervalSec,
-		Active:      true, // New monitors are active by default.
+		Active:      true,
 	}
 
+	//attempts to create the monitor in the database
 	if err := s.db.Create(&newMonitor).Error; err != nil {
 		slog.Error("Failed to create monitor in db", "error", err)
 		respondWithError(w, http.StatusConflict, "Could not create monitor (perhaps URL already exists?)")
@@ -79,8 +81,8 @@ func (s *Server) handleCreateMonitor(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, newMonitor)
 }
 
-// handleUpdateMonitor validates and updates an existing monitor.
-// This handler is now much cleaner and safer.
+//updates an existing monitor
+//expects a JSON payload with URL, IntervalSec, and Active status
 func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
@@ -90,7 +92,6 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First, fetch the monitor we want to update.
 	var existingMonitor database.Monitor
 	if err := s.db.First(&existingMonitor, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -101,7 +102,6 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the helper to decode and validate the incoming update data.
 	var req UpdateMonitorRequest
 	if err := parseAndValidate(r, &req); err != nil {
 		slog.Error("Validation failed for update monitor request", "monitor_id", id, "error", err)
@@ -109,7 +109,6 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply the validated changes to the existing monitor model.
 	existingMonitor.URL = req.URL
 	existingMonitor.IntervalSec = req.IntervalSec
 	existingMonitor.Active = req.Active
@@ -118,8 +117,8 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Failed to save updated monitor")
 		return
 	}
-
-	// Resynchronize the scheduler with the new state.
+	//removes the existing job from the scheduler and re-adds it if active
+	//this ensures the job is updated in the scheduler
 	s.scheduler.RemoveMonitorJob(existingMonitor.ID)
 	if existingMonitor.Active {
 		s.scheduler.AddMonitorJob(existingMonitor)
@@ -131,8 +130,8 @@ func (s *Server) handleUpdateMonitor(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, existingMonitor)
 }
 
-// handleDeleteMonitor deletes a monitor by its ID.
-// No changes were needed here as it doesn't process an input body.
+//deletes a monitor by ID
+//removes it from the database and the scheduler
 func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
@@ -142,10 +141,8 @@ func (s *Server) handleDeleteMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// We must remove the job from the scheduler first.
 	s.scheduler.RemoveMonitorJob(uint(id))
 
-	// Use Unscoped() to perform a hard delete, even if using soft deletes elsewhere.
 	result := s.db.Unscoped().Delete(&database.Monitor{}, id)
 	if result.Error != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete monitor from database")

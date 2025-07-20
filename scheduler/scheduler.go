@@ -1,4 +1,3 @@
-// scheduler/scheduler.go
 
 package scheduler
 
@@ -10,16 +9,18 @@ import (
 	"github.com/parmesh-04/golinkcheck-monitor/checker"
 	"github.com/parmesh-04/golinkcheck-monitor/config"
 	"github.com/parmesh-04/golinkcheck-monitor/database"
-	"github.com/parmesh-04/golinkcheck-monitor/metrics" // Import our new metrics package
+	"github.com/parmesh-04/golinkcheck-monitor/metrics" 
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
 
 // Scheduler manages all the scheduled monitoring jobs.
 type Scheduler struct {
-	cronRunner *cron.Cron
+	cronRunner *cron.Cron // Cron runner instance
 	db         *gorm.DB
 	config     config.Config
+	// activeJobs keeps track of currently scheduled jobs
+	// Key: Monitor ID, Value: Cron Entry ID
 	activeJobs map[uint]cron.EntryID
 }
 

@@ -1,21 +1,21 @@
-// api/helpers.go
-
 package api
 
 import (
 	"encoding/json"
 	"net/http"
+
 	"github.com/go-playground/validator/v10"
 )
 
 var validate = validator.New()
 
-// respondWithError is a helper to send a standardized JSON error message.
+// respondWithError sends a JSON response with an error message and status code
 func respondWithError(w http.ResponseWriter, code int, message string) {
 	respondWithJSON(w, code, map[string]string{"error": message})
 }
 
-// respondWithJSON is a helper to marshal data to JSON and write the response.
+// respondWithJSON sends a JSON response with the given payload and status code
+//interface type is used to allow any type of payload
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	response, _ := json.Marshal(payload)
 
@@ -24,13 +24,13 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(response)
 }
 
+// parseAndValidate decodes the JSON request body into the provided struct and validates it
+//use a pointer to the struct to avoid copying
 func parseAndValidate(r *http.Request, v interface{}) error {
-	// Decode the request body into the provided struct 'v'.
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		return err
 	}
 
-	// Run the validation on the populated struct.
 	if err := validate.Struct(v); err != nil {
 		return err
 	}

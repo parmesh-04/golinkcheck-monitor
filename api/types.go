@@ -1,5 +1,3 @@
-// api/types.go
-
 package api
 
 // CreateMonitorRequest defines the shape of the JSON body for creating a monitor.

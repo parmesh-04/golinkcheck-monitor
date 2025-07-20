@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Add 'validate' tags to the struct fields.
+// Added 'validate' tags to the struct fields.
 type Config struct {
 	ServerPort   string `mapstructure:"SERVER_PORT" validate:"required,numeric"`
 	DatabaseURL  string `mapstructure:"DATABASE_URL" validate:"required"`
@@ -41,6 +41,7 @@ func LoadConfig() (config Config, err error) {
 		}
 	}
 
+	// This will automatically map environment variables to struct fields
 	err = viper.Unmarshal(&config)
 	if err != nil {
 		return
@@ -49,7 +50,6 @@ func LoadConfig() (config Config, err error) {
 	
 	validate := validator.New()
 	if err := validate.Struct(config); err != nil {
-		// The error message from the validator is very informative.
 		return config, fmt.Errorf("configuration validation failed: %w", err)
 	}
 	
