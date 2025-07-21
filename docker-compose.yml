@@ -6,14 +6,14 @@ services:
   # This defines our PostgreSQL database service
   db:
     # We use the official postgres image, version 15, with a lightweight Alpine base.
-    image: postgres:15-alpine
+    image: postgres:15
     # This ensures the database will restart automatically if it crashes.
     restart: always
     # These are the environment variables to configure the postgres container.
     # IMPORTANT: These are for local development ONLY.
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres1234
       - POSTGRES_DB=golinkcheck
     # This maps the port inside the container (5432) to the port on your
     # local machine (5432), so our Go app can connect to it.

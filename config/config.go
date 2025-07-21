@@ -12,12 +12,18 @@ import (
 // Added 'validate' tags to the struct fields.
 type Config struct {
 	ServerPort   string `mapstructure:"SERVER_PORT" validate:"required,numeric"`
-	DatabaseURL  string `mapstructure:"DATABASE_URL" validate:"required"`
 	APISecretKey string `mapstructure:"API_SECRET_KEY" validate:"required,min=16"` // Example: require a minimum length
-
+	JWTSecret    string `mapstructure:"JWT_SECRET"  validate:"required,min=32"` // Example: require a minimum length
 	MonitorDefaultInterval int `mapstructure:"MONITOR_DEFAULT_INTERVAL_SECONDS" validate:"required,gt=0"`
 	MonitorCheckTimeoutSec int `mapstructure:"MONITOR_CHECK_TIMEOUT_SECONDS" validate:"required,gt=0"`
 	SchedulerConcurrency   int `mapstructure:"SCHEDULER_CONCURRENCY" validate:"required,gt=0"`
+
+	DBHost       string `mapstructure:"DB_HOST" validate:"required"`
+	DBPort       string `mapstructure:"DB_PORT" validate:"required,numeric"`
+	DBUser       string `mapstructure:"DB_USER" validate:"required"`
+	DBPassword   string `mapstructure:"DB_PASSWORD"` 
+	DBName       string `mapstructure:"DB_NAME" validate:"required"`
+	DBSSLMode    string `mapstructure:"DB_SSLMODE" validate:"required"`
 }
 
 func LoadConfig() (config Config, err error) {
